@@ -1,0 +1,28 @@
+# Function to split an input into multiple parts
+def split_input(input_text, max_token_length=1024):
+    tokens = input_text.split()
+    parts = []
+    current_part = []
+    current_length = 0
+
+    for token in tokens:
+        token_length = len(token) + 1  # Account for the space
+        if current_length + token_length <= max_token_length:
+            current_part.append(token)
+            current_length += token_length
+        else:
+            parts.append(' '.join(current_part))
+            current_part = [token]
+            current_length = token_length
+
+    if current_part:
+        parts.append(' '.join(current_part))
+
+    return parts
+
+def trim_input(llm, text, max_tokens):
+    # Trim or truncate the input text to fit within the model's token limit
+    tokens = llm.tokenize(text)
+    if len(tokens) > max_tokens:
+        tokens = tokens[-max_tokens:]
+    return llm.detokenize(tokens)
