@@ -60,7 +60,6 @@ def handle_user_input(user_question):
         template = user_template if i % 2 == 0 else bot_template
         st.write(template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
 
-
 # Main function
 def main():
     load_dotenv()

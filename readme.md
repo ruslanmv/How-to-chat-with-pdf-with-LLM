@@ -14,11 +14,13 @@ The application follows these steps to provide responses to your questions:
 
 5. Response Generation: The selected chunks are passed to the language model, which generates a response based on the relevant content of the PDFs.
 
-## Step 1. Installation of Conda
+## Step 1. Enviroment creation
+
+There are several ways to create an envirment in python, in this tutorial will show two options.
+1. Conda method
 
 First you need to install anaconda at this [link](https://www.anaconda.com/products/individual)
 
-![image-20231021101716486](assets/images/posts/readme/image-20231021101716486.png)
 
 in this location **C:\Anaconda3** , then you, check that your terminal , recognize **conda**
 
@@ -27,9 +29,7 @@ C:\conda --version
 conda 23.1.0
 ```
 
-## Step 2. Environment creation
-
-The environments supported that I will consider is Python 3.10,
+The environments supported that I will consider is Python 3.9.4,
 
 I will create an environment called **chatpdf**, but you can put the name that you like.
 
@@ -42,26 +42,61 @@ then we activate
 ```
 conda activate chatpdf
 ```
-
 then in your terminal type the following commands:
 
 ```
 conda install ipykernel notebook
 ```
 
+
+2. Python native 
+
+First we install python 3.10.11 [here](https://www.python.org/downloads/)
+
+
+```
+python -m venv .venv
+```
+
+You’ll notice a new directory in your current working directory with the same name as your virtual environment.
+
+Activate the virtual environment.
+
+```
+.venv\Scripts\activate.bat
+```
 then
 
+
+```
+python -m pip install --upgrade pip
+```
+
+then we install our notebook, because also you can use Jupyter Notebook
+```
+pip install ipykernel notebook
+```
+# Step 2 . Setup libraries
+
+
+Once we have our running environment  we install our kernel
 ```
 python -m ipykernel install --user --name chatpdf --display-name "Python (chatpdf)"
 ```
 
-
-
 Clone the repository to your local machine.
 
+```
+git clone  https://github.com/ruslanmv/How-to-chat-with-pdf-with-LLM.git
+```
+
+and then
 
 
-Install the required dependencies by running the following command:
+```
+cd How-to-chat-with-pdf-with-LLM
+```
+and  we install the required dependencies by running the following command:
 
 ```
 pip install -r requirements.txt
@@ -81,10 +116,6 @@ and if you will use [HuggingFace](https://huggingface.co/settings/tokens) models
 echo HUGGINGFACEHUB_API_TOKEN=hf_xqPNsdlfjlsdjflsdjfjfkpAgVk >>.env
 ```
 
-
-
-Support GPU(optionall)
-
 If you have high end GPU  NVIDIA card you can install the pytorch capability with cuda
 
 ```
@@ -93,7 +124,7 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 
 
 
-## How to run you program
+## Step 3 Run you program
 
 -----
 To use the Chat PDF  App, follow these steps:
