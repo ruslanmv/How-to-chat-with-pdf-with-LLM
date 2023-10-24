@@ -11,28 +11,6 @@ from htmlTemplates import css, bot_template, user_template
 from langchain.llms import HuggingFaceHub
 from langchain.embeddings import HuggingFaceEmbeddings
 
-# Function to split an input into multiple parts
-def split_input(input_text, max_token_length=1024):
-    tokens = input_text.split()
-    parts = []
-    current_part = []
-    current_length = 0
-
-    for token in tokens:
-        token_length = len(token) + 1  # Account for the space
-        if current_length + token_length <= max_token_length:
-            current_part.append(token)
-            current_length += token_length
-        else:
-            parts.append(' '.join(current_part))
-            current_part = [token]
-            current_length = token_length
-
-    if current_part:
-        parts.append(' '.join(current_part))
-
-    return parts
-
 
 # Function to get text from PDF documents
 def get_pdf_text(pdf_docs):
@@ -56,11 +34,7 @@ def get_text_chunks(text):
 # Function to create a vector store
 def get_vectorstore(text_chunks):
     #embeddings = OpenAIEmbeddings()
-    #embeddings = HuggingFaceInstructEmbeddings(model_name="hkunlp/instructor-xl")
-    embeddings = HuggingFaceInstructEmbeddings()
-    #embeddings = HuggingFaceEmbeddings()
-    #vectorstore = FAISS.from_documents(text_chunks, embeddings)
-    
+    embeddings = HuggingFaceInstructEmbeddings()    
     vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
     return vectorstore
 
@@ -79,19 +53,12 @@ def get_conversation_chain(vectorstore):
 
 # Function to handle user input and display responses
 def handle_user_input(user_question):
-    if st.session_state.conversation is None:
-        st.error("Please upload and process documents first.")
-        return
-
-    input_parts = split_input(user_question)  # Split input into parts
-
-    for part in input_parts:
-        response = st.session_state.conversation({'question': part})
-        st.session_state.chat_history = response['chat_history']
-        for i, message in enumerate(st.session_state.chat_history):
-            template = user_template if i % 2 == 0 else bot_template
-            st.write(template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
-
+    response = st.session_state.conversation({'question': user_question})
+    #st.write(response)
+    st.session_state.chat_history = response['chat_history']
+    for i, message in enumerate(st.session_state.chat_history):
+        template = user_template if i % 2 == 0 else bot_template
+        st.write(template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
 
 
 # Main function
