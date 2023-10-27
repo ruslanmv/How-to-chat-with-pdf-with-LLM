@@ -10,6 +10,56 @@ from langchain.chains import ConversationalRetrievalChain
 from htmlTemplates import css, bot_template, user_template
 from langchain.llms import HuggingFaceHub
 from langchain.embeddings import HuggingFaceEmbeddings
+import os
+from dotenv import load_dotenv
+from ibm_watson_machine_learning.metanames import GenTextParamsMetaNames as GenParams
+from ibm_watson_machine_learning.foundation_models.utils.enums import ModelTypes
+from langchain.vectorstores import FAISS
+from langchain.embeddings import TensorflowHubEmbeddings
+
+parameters = {
+    GenParams.DECODING_METHOD: "greedy",
+    GenParams.MAX_NEW_TOKENS: 200,
+    GenParams.MIN_NEW_TOKENS: 0,
+    GenParams.STOP_SEQUENCES: ["\n"],
+    GenParams.REPETITION_PENALTY:1
+    }
+
+
+load_dotenv()
+project_id = os.getenv("PROJECT_ID", None)
+credentials = {
+        "url": "https://us-south.ml.cloud.ibm.com",
+        "apikey": os.getenv("API_KEY", None)
+        }    
+#this cell should never fail, and will produce no output
+import requests
+
+def getBearer(apikey):
+    form = {'apikey': apikey, 'grant_type': "urn:ibm:params:oauth:grant-type:apikey"}
+    print("About to create bearer")
+#    print(form)
+    response = requests.post("https://iam.cloud.ibm.com/oidc/token", data = form)
+    if response.status_code != 200:
+        print("Bad response code retrieving token")
+        raise Exception("Failed to get token, invalid status")
+    json = response.json()
+    if not json:
+        print("Invalid/no JSON retrieving token")
+        raise Exception("Failed to get token, invalid response")
+    print("Bearer retrieved")
+    return json.get("access_token")
+
+credentials["token"] = getBearer(credentials["apikey"])
+from ibm_watson_machine_learning.foundation_models import Model
+model_id = ModelTypes.LLAMA_2_70B_CHAT
+
+# Initialize the Watsonx foundation model
+llama_model = Model(
+    model_id=model_id, 
+    params=parameters, 
+    credentials=credentials,
+    project_id=project_id)
 
 
 # Function to get text from PDF documents
@@ -33,15 +83,18 @@ def get_text_chunks(text):
 
 # Function to create a vector store
 def get_vectorstore(text_chunks):
-    embeddings = OpenAIEmbeddings()
-    #embeddings = HuggingFaceInstructEmbeddings()    
+    url = "https://tfhub.dev/google/universal-sentence-encoder-multilingual/3"
+    #embeddings = OpenAIEmbeddings()
+    #embeddings = HuggingFaceInstructEmbeddings() 
+    embeddings  = TensorflowHubEmbeddings(model_url=url)   
     vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
     return vectorstore
 
 # Function to create a conversation chain
 def get_conversation_chain(vectorstore):
-    llm = ChatOpenAI()
+    #llm = ChatOpenAI()
     #llm = HuggingFaceHub(repo_id="google/flan-t5-xxl", model_kwargs={"temperature":0.5, "max_length":512})
+    llm=llama_model.to_langchain()
     memory = ConversationBufferMemory(
         memory_key='chat_history', return_messages=True)
     conversation_chain = ConversationalRetrievalChain.from_llm(
@@ -53,26 +106,26 @@ def get_conversation_chain(vectorstore):
 
 # Function to handle user input and display responses
 def handle_user_input(user_question):
-    response = st.session_state.conversation({'question': user_question})
-    #st.write(response)
+    parameters = {"instruction": "Answer the following question using only information from the article. If there is no good answer in the article, say I don't know"}
+    prompt={"question": user_question}
+    response = st.session_state.conversation(prompt, {"Answer the following question using only information from the article. If there is no good answer in the article, say I don't know"})
+    st.write(response)
     st.session_state.chat_history = response['chat_history']
     for i, message in enumerate(st.session_state.chat_history):
         template = user_template if i % 2 == 0 else bot_template
         st.write(template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
 
+
 # Main function
 def main():
-    load_dotenv()
     st.set_page_config(page_title="Chat with your Documents", page_icon=":books:")
     st.write(css, unsafe_allow_html=True)
-
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = None
     st.header("Chat with PDFs documents :books:")
     user_question = st.text_input("Upload your documents and ask questions:")        
-
     with st.sidebar:
         st.subheader("Your documents")
         pdf_docs = st.file_uploader("Upload your PDFs here and click on 'Process'", accept_multiple_files=True)
@@ -88,8 +141,6 @@ def main():
                     vectorstore = get_vectorstore(text_chunks)
                     st.write("Document loaded")
                     st.session_state.conversation = get_conversation_chain(vectorstore)                    
-
-
     if user_question and st.session_state.conversation is not None:
             handle_user_input(user_question)
         
