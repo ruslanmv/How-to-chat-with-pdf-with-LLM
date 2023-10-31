@@ -16,10 +16,13 @@ from ibm_watson_machine_learning.metanames import GenTextParamsMetaNames as GenP
 from ibm_watson_machine_learning.foundation_models.utils.enums import ModelTypes
 from langchain.vectorstores import FAISS
 from langchain.embeddings import TensorflowHubEmbeddings
-
+import requests
+import os
+import tempfile
+import pandas as pd
 parameters = {
     GenParams.DECODING_METHOD: "greedy",
-    GenParams.MAX_NEW_TOKENS: 200,
+    GenParams.MAX_NEW_TOKENS: 500,
     GenParams.MIN_NEW_TOKENS: 0,
     GenParams.STOP_SEQUENCES: ["\n"],
     GenParams.REPETITION_PENALTY:1
@@ -104,12 +107,88 @@ def get_conversation_chain(vectorstore):
     )
     return conversation_chain
 
+def call_model_flan(question):
+    
+    parameters = {
+    GenParams.DECODING_METHOD: "greedy",
+    GenParams.MAX_NEW_TOKENS: 50,
+    GenParams.MIN_NEW_TOKENS: 1,
+    #GenParams.STOP_SEQUENCES: ["\n"],
+    GenParams.STOP_SEQUENCES: ["<|endoftext|>"],
+    GenParams.REPETITION_PENALTY:1,
+    
+    }    
+    
+    # Initialize the Watsonx foundation model
+    llm_model= Model(
+        model_id=ModelTypes['FLAN_T5_XXL'], 
+        params=parameters, 
+        credentials=credentials,
+        project_id=project_id)
+    prompt = f"Considering the following question, generate 3 keywords are most significant to use when searching in the Arxiv API ,provide your response as a Python list: {question}. "
+    result=llm_model.generate(prompt)['results'][0]['generated_text']
+
+    # Convert string to a list of individual words
+    word_list = result.split(', ')    
+    
+    return word_list
+
+
+def download_pdf(url, filename):
+    response = requests.get(url)
+    with open(filename, 'wb') as file:
+        file.write(response.content)
+
+def download_pdf_files(url_list):
+    temp_dir = tempfile.gettempdir()  # Get the temporary directory path
+    downloaded_files = []  # List to store downloaded file paths
+    for i, url in enumerate(url_list):
+        filename = os.path.join(temp_dir, f'file_{i+1}.pdf')  # Set the absolute path in the temporary directory
+        download_pdf(url, filename)
+        downloaded_files.append(filename)  # Append the file name to the list with the path
+        print(f'Downloaded: {filename}')
+
+    return downloaded_files  # Return the list of downloaded file names
+
+def delete_files_in_temp():
+    temp_dir = tempfile.gettempdir()  # Get the temporary directory path
+    for file in os.listdir(temp_dir):
+        file_path = os.path.join(temp_dir, file)
+        try:
+            if os.path.isfile(file_path):
+                os.unlink(file_path)
+                print(f"Deleted: {file_path}")
+        except Exception as e:
+            print(f"Failed to delete {file_path}: {e}")
+            
+def arxiv_search(topic):
+    import arxiv
+    print("Searching on Arxiv: '{}' ".format(topic))
+    # combinations of single topics
+    titles = list()
+    authors = list()
+    summary = list()
+    pdf_url = list()
+    search = arxiv.Search(
+    query = topic,
+    max_results = 5,
+    sort_by = arxiv.SortCriterion.Relevance
+    #SubmittedDate #TODO Include it
+    )
+    print('Fetching items for token: {}'.format(topic))  
+    titles = [result.title for result in arxiv.Client().results(search)]
+    pdf_url = [result.pdf_url for result in arxiv.Client().results(search)]
+    url_list =pdf_url
+    downloaded_files = download_pdf_files(url_list)
+    return downloaded_files ,titles
+
 # Function to handle user input and display responses
-def handle_user_input(user_question):
+def handle_user_input(user_question, titles=None):
     parameters = {"instruction": "Answer the following question using only information from the article. If there is no good answer in the article, say I don't know"}
     prompt={"question": user_question}
-    response = st.session_state.conversation(prompt, {"Answer the following question using only information from the article. If there is no good answer in the article, say I don't know"})
-    st.write(response)
+    response = st.session_state.conversation(prompt)
+    #st.write(response)
+    
     st.session_state.chat_history = response['chat_history']
     for i, message in enumerate(st.session_state.chat_history):
         template = user_template if i % 2 == 0 else bot_template
@@ -124,13 +203,40 @@ def main():
         st.session_state.conversation = None
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = None
-    st.header("Chat with PDFs documents :books:")
-    user_question = st.text_input("Upload your documents and ask questions:")        
+    st.header("Chat with ArXiv Documents :books:")
+    user_question = st.text_input("Ask questions to ArXiv or upload your documents:") 
+    
+    if st.button("Search") and user_question:      
+        with st.spinner("Analyzing query"):
+            original_list=call_model_flan(user_question)
+            unique_list = list(set(original_list))
+            topic = ' '.join(unique_list)  # full topic creation
+        with st.spinner("Searching in ArXiv: "+topic):
+            downloaded_files , titles =arxiv_search(topic)
+        with st.spinner("Vectorizing results"):
+            # Get PDF text and split into chunks
+            raw_text = get_pdf_text(downloaded_files)
+            text_chunks = get_text_chunks(raw_text)
+            # Create vector store and conversation chain
+            vectorstore = get_vectorstore(text_chunks)
+            #st.write('Vectorization completed')
+            st.write("Documents loaded")
+            st.session_state.conversation = get_conversation_chain(vectorstore) 
+            if titles is not None:     
+                # Using list comprehension with enumeration to create a new list of strings
+                enumerated_strings = [f"{index + 1}. {value}" for index, value in enumerate(titles)]
+                # Combining the enumerated strings into a single string
+                combined_string = ', \n '.join(enumerated_strings)  # Separate each enumerated string by a new line
+                st.write(bot_template.replace("{{MSG}}", "On ArXiv I found the following relevant papers: "+combined_string), unsafe_allow_html=True)
+    
+                
+            
+                  
     with st.sidebar:
         st.subheader("Your documents")
         pdf_docs = st.file_uploader("Upload your PDFs here and click on 'Process'", accept_multiple_files=True)
         if not pdf_docs:
-            st.write('Please add a document')
+            st.write('You can add your document')
         else:     
             if st.button("Process"):
                 with st.spinner("Processing"):
@@ -140,6 +246,8 @@ def main():
                     # Create vector store and conversation chain
                     vectorstore = get_vectorstore(text_chunks)
                     st.write("Document loaded")
+                    titles=None
+                    
                     st.session_state.conversation = get_conversation_chain(vectorstore)                    
     if user_question and st.session_state.conversation is not None:
             handle_user_input(user_question)
