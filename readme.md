@@ -1,4 +1,8 @@
+
+
 # How to chat with a PDF by using LLM in Streamlit
+
+![demo](../assets/images/posts/readme/demo.gif)
 
 Hello, today we are going to build a simple application that where we load  a PDF  
 
